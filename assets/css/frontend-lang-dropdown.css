@@ -1,0 +1,192 @@
+/**
+ * TranslatePlus premium language dropdown (front end).
+ */
+
+/* When injected into wp_nav_menu: one <li> wrapping the dropdown */
+.translateplus-nav-menu-lang-dropdown {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.translateplus-nav-menu-lang-dropdown .translateplus-lang-dd {
+	margin: 0;
+}
+
+/*
+ * Custom menu item (#tp-lang-switcher): <li class="… translateplus-nav-menu-li …">
+ *   <div class="translateplus-nav-menu-item--lang-switcher"> … dropdown … </div>
+ * </li>
+ */
+.menu-item-translateplus-lang-switcher > .translateplus-nav-menu-item--lang-switcher {
+	display: flex;
+	align-items: center;
+	margin: 0;
+	padding: 0;
+}
+
+.menu-item-translateplus-lang-switcher > .translateplus-nav-menu-item--lang-switcher.is-empty {
+	min-height: 0;
+	min-width: 0;
+}
+
+.translateplus-lang-dd {
+	position: relative;
+	display: inline-block;
+	font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+	font-size: 0.9375rem;
+	line-height: 1.4;
+}
+
+.translateplus-lang-dd__toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	min-height: 44px;
+	padding: 0.5rem 0.75rem;
+	margin: 0;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 0.5rem;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	cursor: pointer;
+	color: #111827;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.translateplus-lang-dd__toggle:hover {
+	border-color: #d1d5db;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.translateplus-lang-dd__toggle:focus {
+	outline: none;
+	border-color: #3b82f6;
+	box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+.translateplus-lang-dd.is-open .translateplus-lang-dd__toggle {
+	border-color: #d1d5db;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.translateplus-lang-dd__flag {
+	font-size: 1.25rem;
+	line-height: 1;
+}
+
+.translateplus-lang-dd__label {
+	font-weight: 500;
+	max-width: 10rem;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.translateplus-lang-dd__chev {
+	display: inline-block;
+	font-size: 0.65rem;
+	color: #6b7280;
+	transition: transform 0.2s ease;
+	margin-left: 0.15rem;
+}
+
+.translateplus-lang-dd.is-open .translateplus-lang-dd__chev {
+	transform: rotate(180deg);
+}
+
+.translateplus-lang-dd__list {
+	position: absolute;
+	left: 0;
+	top: calc(100% + 4px);
+	min-width: 100%;
+	width: max-content;
+	max-width: min(18rem, 92vw);
+	margin: 0;
+	padding: 0.35rem 0;
+	list-style: none;
+	background: #fff;
+	border: 1px solid #e5e7eb;
+	border-radius: 0.5rem;
+	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+	z-index: 1000;
+}
+
+.translateplus-lang-dd__list[hidden] {
+	display: none !important;
+}
+
+.translateplus-lang-dd__item {
+	margin: 0;
+	padding: 0;
+}
+
+.translateplus-lang-dd__link {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.55rem 0.85rem;
+	color: #374151;
+	text-decoration: none;
+	transition: background 0.12s ease;
+}
+
+.translateplus-lang-dd__link:hover {
+	background: #f9fafb;
+	color: #111827;
+}
+
+.translateplus-lang-dd__item.is-active .translateplus-lang-dd__link {
+	background: #eff6ff;
+	color: #1d4ed8;
+	font-weight: 600;
+	cursor: default;
+	pointer-events: none;
+}
+
+.translateplus-lang-dd__item.is-active .translateplus-lang-dd__link:hover {
+	background: #eff6ff;
+}
+
+.translateplus-lang-dd__item.is-missing .translateplus-lang-dd__link--missing {
+	color: #9ca3af;
+	cursor: not-allowed;
+	pointer-events: none;
+	opacity: 0.85;
+}
+
+.translateplus-lang-dd__item-flag {
+	font-size: 1.1rem;
+	line-height: 1;
+	flex-shrink: 0;
+}
+
+.translateplus-lang-dd__item-text {
+	flex: 1;
+	min-width: 0;
+}
+
+.translateplus-lang-dd__item-code {
+	font-size: 0.75rem;
+	color: #9ca3af;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+}
+
+.translateplus-lang-dd__item.is-active .translateplus-lang-dd__item-code {
+	color: #60a5fa;
+}
+
+/* Settings: hide flag emoji in dropdown */
+.translateplus-lang-dd--no-flags .translateplus-lang-dd__flag,
+.translateplus-lang-dd--no-flags .translateplus-lang-dd__item-flag {
+	display: none;
+}
+
+/* Settings: inline layout (horizontal links) */
+.translateplus-lang-switcher--inline .translateplus-frontend-lang-switcher__flag {
+	font-size: 1.1rem;
+	line-height: 1;
+	flex-shrink: 0;
+}

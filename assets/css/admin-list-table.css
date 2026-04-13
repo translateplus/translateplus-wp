@@ -1,0 +1,57 @@
+/**
+ * Posts/Pages list: Languages column (translation map).
+ */
+
+.column-translateplus_lang_map {
+	width: 12%;
+	min-width: 140px;
+}
+
+.translateplus-admin-lang-map {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 6px;
+	align-items: center;
+}
+
+.translateplus-admin-lang-map__link,
+.translateplus-admin-lang-map__cell {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 2rem;
+	padding: 2px 6px;
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1.4;
+	border-radius: 4px;
+	box-sizing: border-box;
+}
+
+.translateplus-admin-lang-map__link {
+	text-decoration: none;
+	color: #1d4ed8;
+	background: #eff6ff;
+	border: 1px solid #bfdbfe;
+}
+
+.translateplus-admin-lang-map__link:hover,
+.translateplus-admin-lang-map__link:focus {
+	color: #1e40af;
+	background: #dbeafe;
+	border-color: #93c5fd;
+}
+
+.translateplus-admin-lang-map__link.is-current {
+	color: #0f172a;
+	background: #e2e8f0;
+	border-color: #cbd5e1;
+	cursor: default;
+	pointer-events: none;
+}
+
+.translateplus-admin-lang-map__cell--missing {
+	color: #9ca3af;
+	background: #f9fafb;
+	border: 1px dashed #d1d5db;
+}

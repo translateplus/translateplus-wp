@@ -1,0 +1,107 @@
+/* Post editor: Translation overview meta box + shared action roots */
+
+.translateplus-translation-overview {
+	margin: -6px 0 0;
+	font-size: 13px;
+	line-height: 1.45;
+	color: #1d2327;
+}
+
+.translateplus-translation-overview__intro {
+	margin: 0 0 12px;
+	color: #50575e;
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+.translateplus-translation-overview__field {
+	margin: 0 0 14px;
+}
+
+.translateplus-translation-overview__field label {
+	display: block;
+	font-weight: 600;
+	margin-bottom: 6px;
+}
+
+.translateplus-translation-overview__heading {
+	margin: 0 0 8px;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
+	color: #50575e;
+}
+
+.translateplus-translation-overview__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	overflow: hidden;
+	background: #fff;
+}
+
+.translateplus-translation-overview__item {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 10px;
+	border-bottom: 1px solid #f0f0f1;
+}
+
+.translateplus-translation-overview__item:last-child {
+	border-bottom: 0;
+}
+
+.translateplus-translation-overview__lang {
+	font-weight: 500;
+	min-width: 0;
+}
+
+.translateplus-translation-overview__lang code {
+	font-size: 11px;
+	font-weight: 600;
+	margin-left: 4px;
+	color: #646970;
+	background: transparent;
+}
+
+.translateplus-translation-overview__actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+.translateplus-translation-overview__badge {
+	display: inline-block;
+	padding: 2px 8px;
+	border-radius: 10px;
+	font-size: 11px;
+	font-weight: 600;
+	background: #e7f5ff;
+	color: #0073aa;
+	border: 1px solid #b6d9f0;
+}
+
+.translateplus-translation-overview__badge--muted {
+	background: #f6f7f7;
+	color: #50575e;
+	border-color: #dcdcde;
+}
+
+.translateplus-translation-overview__footer {
+	margin: 12px 0 0;
+	padding-top: 10px;
+	border-top: 1px solid #f0f0f1;
+}
+
+.translateplus-translation-overview__footer .button {
+	width: 100%;
+	text-align: center;
+	justify-content: center;
+}
