@@ -1,7 +1,7 @@
 <?php
 /**
- * Plugin Name:       TranslatePlus
- * Description:       Translation API integration for WordPress.
+ * Plugin Name:       TranslatePlus – AI Translation for WordPress
+ * Description:       AI-powered WordPress translation plugin with fast, cost-efficient multilingual support and automatic content translation.
  * Version:           2.0.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
