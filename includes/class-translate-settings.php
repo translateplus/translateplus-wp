@@ -754,7 +754,7 @@ final class TranslatePlus_Settings {
                     </option>
                 </select>
                 <p class="description" style="margin-top:12px;margin-bottom:0;">
-                    <?php esc_html_e('Automatic mode queues work after each save: a background job creates missing draft posts in the same translation group (matching the parent page when applicable), then translates this post’s content into those linked posts (API credits). The editor saves immediately; translations finish shortly after. Only posts you can edit are created or updated.', 'translateplus'); ?>
+                    <?php esc_html_e('Automatic mode on each save: creates missing draft posts in the same translation group (matching the parent page when applicable), then translates title and content into those linked posts via the API (uses credits). Translation runs during save; a follow-up cron job can re-sync if WP-Cron runs. Only posts you can edit are created or updated.', 'translateplus'); ?>
                 </p>
                 <p style="margin-top:18px;margin-bottom:8px;">
                     <input type="hidden" name="<?php echo esc_attr(self::OPTION_EDITOR_MANUAL_UI); ?>" value="0" />

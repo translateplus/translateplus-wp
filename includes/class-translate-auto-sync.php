@@ -1,7 +1,8 @@
 <?php
 /**
- * When translation mode is automatic, ensure drafts exist for each configured locale and push content
- * from the saved post to other posts in the same group. Runs in the background via WP-Cron by default.
+ * When translation mode is automatic, ensure drafts exist for each configured locale and push translated
+ * title, excerpt, and content to other posts in the same group. Drafts are created on save; translation
+ * runs in the same request by default, with WP-Cron as a fallback for later edits.
  *
  * @package TranslatePlus
  */
@@ -97,12 +98,18 @@ final class TranslatePlus_Auto_Sync {
         }
 
         if (apply_filters('translateplus_auto_sync_background', true, $post_id, $post)) {
-            // Create linked draft posts immediately so every Settings language exists without waiting for WP-Cron.
+            // Create linked drafts immediately, then translate title/body into siblings (same request; cron may re-sync later).
             $group = TranslatePlus_Translation_Group::ensure_group_for_post($post_id);
             self::$syncing = true;
             try {
                 if (apply_filters('translateplus_auto_sync_create_missing', true, $post, $group)) {
                     self::ensure_missing_translation_posts($post, $group);
+                }
+                if (apply_filters('translateplus_auto_sync_translate_inline', true, $post_id, $post)) {
+                    $fresh = get_post($post_id);
+                    if ($fresh instanceof WP_Post) {
+                        self::run_sync_for_post($fresh);
+                    }
                 }
             } finally {
                 self::$syncing = false;
@@ -251,7 +258,7 @@ final class TranslatePlus_Auto_Sync {
 
             $tgt_stored = TranslatePlus_Translation_Group::get_post_language($sibling->ID);
             $tgt_norm   = TranslatePlus_Languages::normalize($tgt_stored);
-            if ($tgt_norm === null || $tgt_norm === 'auto' || ! TranslatePlus_Languages::is_valid_target($tgt_norm)) {
+            if ($tgt_norm === null || $tgt_norm === 'auto') {
                 continue;
             }
             if ($src_norm !== null && $tgt_norm === $src_norm) {
