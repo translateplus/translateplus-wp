@@ -97,7 +97,17 @@ final class TranslatePlus_Auto_Sync {
         }
 
         if (apply_filters('translateplus_auto_sync_background', true, $post_id, $post)) {
-            TranslatePlus_Translation_Group::ensure_group_for_post($post_id);
+            // Create linked draft posts immediately so every Settings language exists without waiting for WP-Cron.
+            $group = TranslatePlus_Translation_Group::ensure_group_for_post($post_id);
+            self::$syncing = true;
+            try {
+                if (apply_filters('translateplus_auto_sync_create_missing', true, $post, $group)) {
+                    self::ensure_missing_translation_posts($post, $group);
+                }
+            } finally {
+                self::$syncing = false;
+            }
+
             self::schedule_sync($post_id, $post);
             return;
         }
@@ -305,7 +315,7 @@ final class TranslatePlus_Auto_Sync {
 
         foreach (array_keys($choices) as $lang_code) {
             $lang_norm = TranslatePlus_Languages::normalize($lang_code);
-            if ($lang_norm === null || $lang_norm === 'auto' || ! TranslatePlus_Languages::is_valid_target($lang_norm)) {
+            if ($lang_norm === null || $lang_norm === 'auto') {
                 continue;
             }
 

@@ -7,6 +7,10 @@
 	list-style: none;
 	margin: 0;
 	padding: 0;
+	position: relative;
+	z-index: 100050;
+	overflow: visible;
+	align-self: center;
 }
 
 .translateplus-nav-menu-lang-dropdown .translateplus-lang-dd {
@@ -23,6 +27,9 @@
 	align-items: center;
 	margin: 0;
 	padding: 0;
+	overflow: visible;
+	position: relative;
+	z-index: 100050;
 }
 
 .menu-item-translateplus-lang-switcher > .translateplus-nav-menu-item--lang-switcher.is-empty {
@@ -30,12 +37,33 @@
 	min-width: 0;
 }
 
+/* Prevent flex/stretch or overflow from growing the header when the panel opens */
+li.menu-item-translateplus-lang-switcher {
+	overflow: visible !important;
+	position: relative;
+	z-index: 100050;
+	align-self: center;
+}
+
+.site-header .translateplus-lang-dd,
+#masthead .translateplus-lang-dd,
+.site-header .translateplus-nav-menu-lang-dropdown,
+header .translateplus-lang-dd {
+	overflow: visible;
+}
+
+/* Root: only wraps the toggle; list is absolutely positioned so it never stretches the header/nav row */
 .translateplus-lang-dd {
 	position: relative;
 	display: inline-block;
+	vertical-align: middle;
+	flex-shrink: 0;
+	align-self: center;
 	font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 	font-size: 0.9375rem;
 	line-height: 1.4;
+	overflow: visible;
+	isolation: isolate;
 }
 
 .translateplus-lang-dd__toggle {
@@ -96,9 +124,12 @@
 }
 
 .translateplus-lang-dd__list {
+	box-sizing: border-box;
 	position: absolute;
 	left: 0;
+	right: auto;
 	top: calc(100% + 4px);
+	float: none;
 	min-width: 100%;
 	width: max-content;
 	max-width: min(18rem, 92vw);
@@ -109,7 +140,13 @@
 	border: 1px solid #e5e7eb;
 	border-radius: 0.5rem;
 	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
-	z-index: 1000;
+	z-index: 100060;
+}
+
+/* Open state: panel must stay out of document flow (themes often reset ul display) */
+.translateplus-lang-dd.is-open .translateplus-lang-dd__list {
+	display: block !important;
+	position: absolute !important;
 }
 
 .translateplus-lang-dd__list[hidden] {

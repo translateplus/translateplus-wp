@@ -324,6 +324,34 @@ final class TranslatePlus_Translation_Group {
     }
 
     /**
+     * Canonical language key for switcher maps (matches {@see self::locale_choices()} keys).
+     */
+    private static function switcher_language_key(string $code): string {
+        $n = TranslatePlus_Languages::normalize($code);
+        if ($n !== null && $n !== 'auto') {
+            return $n;
+        }
+
+        return strtolower(sanitize_key($code));
+    }
+
+    /**
+     * Whether a linked post should show as a clickable switcher link for the current visitor.
+     */
+    private static function switcher_target_is_followable(int $post_id): bool {
+        $p = get_post($post_id);
+        if (! $p instanceof WP_Post) {
+            return false;
+        }
+
+        if (function_exists('is_post_publicly_viewable') && is_post_publicly_viewable($p)) {
+            return true;
+        }
+
+        return current_user_can('read_post', $post_id);
+    }
+
+    /**
      * Build switcher rows: every locale from Settings ({@see self::locale_choices()}), plus any extra languages
      * found in the group. Missing translations are included with empty URL and missing=true.
      *
@@ -341,7 +369,7 @@ final class TranslatePlus_Translation_Group {
             $query = new WP_Query(
                 array(
                     'post_type'              => $post->post_type,
-                    'post_status'            => 'publish',
+                    'post_status'            => array('publish', 'draft', 'pending', 'future', 'private'),
                     'posts_per_page'         => -1,
                     'orderby'                => 'ID',
                     'order'                  => 'ASC',
@@ -366,15 +394,16 @@ final class TranslatePlus_Translation_Group {
                 if ($lang === '') {
                     continue;
                 }
-                if (! isset($map[ $lang ]) || $p->ID < $map[ $lang ]) {
-                    $map[ $lang ] = $p->ID;
+                $lang_key = self::switcher_language_key($lang);
+                if (! isset($map[ $lang_key ]) || $p->ID < $map[ $lang_key ]) {
+                    $map[ $lang_key ] = $p->ID;
                 }
             }
         }
 
         $cur_lang = self::get_post_language($post->ID);
         if ($cur_lang !== '') {
-            $map[ $cur_lang ] = $post->ID;
+            $map[ self::switcher_language_key($cur_lang) ] = $post->ID;
         }
 
         $choices = self::locale_choices();
@@ -386,10 +415,12 @@ final class TranslatePlus_Translation_Group {
         $used  = array();
 
         foreach ($choices as $code => $label) {
-            $pid     = isset($map[ $code ]) ? (int) $map[ $code ] : 0;
-            $url     = '';
-            $missing = true;
-            if ($pid > 0) {
+            $code_key = self::switcher_language_key($code);
+            $pid      = isset($map[ $code_key ]) ? (int) $map[ $code_key ] : 0;
+            $url      = '';
+            $missing  = true;
+
+            if ($pid > 0 && self::switcher_target_is_followable($pid)) {
                 $permalink = get_permalink($pid);
                 if (is_string($permalink) && $permalink !== '') {
                     $url     = $permalink;
@@ -398,19 +429,23 @@ final class TranslatePlus_Translation_Group {
             }
 
             $items[] = array(
-                'code'    => $code,
+                'code'    => $code_key,
                 'label'   => $label,
                 'url'     => $url,
                 'current' => $pid > 0 && (int) $post->ID === $pid,
                 'missing' => $missing,
             );
-            $used[ $code ] = true;
+            $used[ $code_key ] = true;
         }
 
         $extra = array_diff_key($map, $used);
         ksort($extra, SORT_STRING);
         foreach ($extra as $code => $pid) {
-            $url = get_permalink((int) $pid);
+            $pid = (int) $pid;
+            if ($pid <= 0 || ! self::switcher_target_is_followable($pid)) {
+                continue;
+            }
+            $url = get_permalink($pid);
             if (! is_string($url) || $url === '') {
                 continue;
             }
@@ -418,7 +453,7 @@ final class TranslatePlus_Translation_Group {
                 'code'    => $code,
                 'label'   => strtoupper($code),
                 'url'     => $url,
-                'current' => (int) $post->ID === (int) $pid,
+                'current' => (int) $post->ID === $pid,
                 'missing' => false,
             );
         }
