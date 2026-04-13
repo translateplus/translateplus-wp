@@ -81,7 +81,7 @@ Works seamlessly with:
 ### 1. Install Plugin
 
 ```bash
-git clone https://github.com/your-username/translateplus-wp.git
+git clone https://github.com/translateplus/translateplus-wp.git
 ```
 
 Or upload to:
