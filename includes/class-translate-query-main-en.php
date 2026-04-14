@@ -1,6 +1,6 @@
 <?php
 /**
- * Front-end main query: list views only show posts with _tp_language = en.
+ * Front-end main query: list views show posts for the active language only.
  *
  * Singular requests are unchanged so direct URLs to translated posts still resolve.
  *
@@ -15,11 +15,6 @@ if (! defined('ABSPATH')) {
  * @package TranslatePlus
  */
 final class TranslatePlus_Query_Main_En {
-
-    /**
-     * Canonical English code stored in post meta (matches TranslatePlus default source).
-     */
-    private const EN_CODE = TranslatePlus_API::DEFAULT_SOURCE;
 
     public static function init(): void {
         add_action('pre_get_posts', array(self::class, 'pre_get_posts'), 10);
@@ -41,16 +36,21 @@ final class TranslatePlus_Query_Main_En {
             return;
         }
 
-        // Language-prefixed permalinks (/{lang}/...) set query vars; do not force English-only meta.
+        $active_lang = self::detect_active_language($query);
+        if ($active_lang === '') {
+            return;
+        }
+
+        // Rewritten /{lang}/{path} singular resolution is handled by TranslatePlus_Rewrites.
+        // Do not inject list-view language meta constraints for these requests.
         if (class_exists('TranslatePlus_Rewrites', false)) {
-            $tp_lang = $query->get(TranslatePlus_Rewrites::QUERY_VAR_LANG);
             $tp_path = $query->get(TranslatePlus_Rewrites::QUERY_VAR_PATH);
-            if ((is_string($tp_lang) && $tp_lang !== '') || (is_string($tp_path) && $tp_path !== '')) {
+            if (is_string($tp_path) && $tp_path !== '') {
                 return;
             }
         }
 
-        if (! apply_filters('translateplus_main_query_show_only_en', true, $query)) {
+        if (! apply_filters('translateplus_main_query_show_only_en', true, $query, $active_lang)) {
             return;
         }
 
@@ -86,11 +86,7 @@ final class TranslatePlus_Query_Main_En {
             return;
         }
 
-        $en_clause = array(
-            'key'     => TranslatePlus_Translation_Group::META_LANGUAGE,
-            'value'   => self::EN_CODE,
-            'compare' => '=',
-        );
+        $lang_clause = self::build_language_clause($active_lang);
 
         $existing = $query->get('meta_query');
         if (! empty($existing) && is_array($existing)) {
@@ -99,11 +95,73 @@ final class TranslatePlus_Query_Main_En {
                 array(
                     'relation' => 'AND',
                     $existing,
-                    $en_clause,
+                    $lang_clause,
                 )
             );
         } else {
-            $query->set('meta_query', array($en_clause));
+            $query->set('meta_query', array($lang_clause));
         }
+    }
+
+    /**
+     * Detect active language for the current frontend request.
+     */
+    private static function detect_active_language(WP_Query $query): string {
+        $default = TranslatePlus_Languages::normalize(TranslatePlus_API::DEFAULT_SOURCE);
+        if (! is_string($default) || $default === '' || $default === 'auto') {
+            $default = 'en';
+        }
+
+        if (class_exists('TranslatePlus_Rewrites', false)) {
+            $tp_lang = $query->get(TranslatePlus_Rewrites::QUERY_VAR_LANG);
+            if (is_string($tp_lang) && $tp_lang !== '') {
+                $normalized = TranslatePlus_Languages::normalize($tp_lang);
+                if (is_string($normalized) && $normalized !== '' && $normalized !== 'auto') {
+                    return $normalized;
+                }
+            }
+        }
+
+        return $default;
+    }
+
+    /**
+     * Build language meta clause for main list queries.
+     *
+     * For default language, include legacy content without language meta.
+     *
+     * @return array<string, mixed>
+     */
+    private static function build_language_clause(string $active_lang): array {
+        $default = TranslatePlus_Languages::normalize(TranslatePlus_API::DEFAULT_SOURCE);
+        if (! is_string($default) || $default === '' || $default === 'auto') {
+            $default = 'en';
+        }
+
+        if ($active_lang !== $default) {
+            return array(
+                'key'     => TranslatePlus_Translation_Group::META_LANGUAGE,
+                'value'   => $active_lang,
+                'compare' => '=',
+            );
+        }
+
+        return array(
+            'relation' => 'OR',
+            array(
+                'key'     => TranslatePlus_Translation_Group::META_LANGUAGE,
+                'value'   => $default,
+                'compare' => '=',
+            ),
+            array(
+                'key'     => TranslatePlus_Translation_Group::META_LANGUAGE,
+                'compare' => 'NOT EXISTS',
+            ),
+            array(
+                'key'     => TranslatePlus_Translation_Group::META_LANGUAGE,
+                'value'   => '',
+                'compare' => '=',
+            ),
+        );
     }
 }

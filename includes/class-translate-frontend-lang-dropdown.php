@@ -497,17 +497,12 @@ final class TranslatePlus_Frontend_Lang_Dropdown {
         if (! apply_filters('translateplus_frontend_dropdown_assets', true)) {
             return;
         }
-        if (! is_singular()) {
+        if (is_admin()) {
             return;
         }
-        $post = get_queried_object();
-        if (! $post instanceof WP_Post || ! in_array($post->post_type, TranslatePlus_Settings::get_translatable_post_types(), true)) {
-            return;
-        }
-        $items = TranslatePlus_Translation_Group::get_frontend_switcher_items($post);
-        if (count($items) < 2) {
-            return;
-        }
+
+        // Ensure switcher interactions (localStorage preference + dropdown behavior)
+        // are available on all frontend routes, including homepage and archives.
         self::enqueue_styles_only();
     }
 

@@ -425,7 +425,7 @@ final class TranslatePlus_Translation_Group {
             if ($pid > 0 && self::switcher_target_is_followable($pid)) {
                 $permalink = get_permalink($pid);
                 if (is_string($permalink) && $permalink !== '') {
-                    $url     = $permalink;
+                    $url     = TranslatePlus_URL_Builder::convert_url($permalink, $code_key);
                     $missing = false;
                 }
             }
@@ -451,6 +451,7 @@ final class TranslatePlus_Translation_Group {
             if (! is_string($url) || $url === '') {
                 continue;
             }
+            $url = TranslatePlus_URL_Builder::convert_url($url, $code);
             $items[] = array(
                 'code'    => $code,
                 'label'   => strtoupper($code),

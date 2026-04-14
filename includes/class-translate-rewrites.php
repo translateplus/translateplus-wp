@@ -271,6 +271,25 @@ final class TranslatePlus_Rewrites {
             if ($direct_lang === $lang) {
                 return $direct;
             }
+
+            // If direct path resolves to a sibling in the same translation group, remap to requested language.
+            $group = get_post_meta((int) $direct->ID, TranslatePlus_Translation_Group::META_GROUP, true);
+            if (is_string($group) && $group !== '') {
+                $translated_id = TranslatePlus_Translation_Group::find_post_in_group_by_language($group, $lang, $direct->post_type);
+                if ($translated_id > 0) {
+                    $translated = get_post($translated_id);
+                    if ($translated instanceof WP_Post && $translated->post_status === 'publish') {
+                        return $translated;
+                    }
+                }
+            }
+
+            // Tolerate legacy content without language meta to avoid hard 404 on prefixed URLs.
+            $has_lang_meta = get_post_meta((int) $direct->ID, TranslatePlus_Translation_Group::META_LANGUAGE, true);
+            $has_legacy    = get_post_meta((int) $direct->ID, '_tp_content_locale', true);
+            if ((! is_string($has_lang_meta) || $has_lang_meta === '') && (! is_string($has_legacy) || $has_legacy === '')) {
+                return $direct;
+            }
         }
 
         $segments = explode('/', $normalized_path);
@@ -367,6 +386,43 @@ final class TranslatePlus_Rewrites {
             $translated = get_post($translated_id);
             if ($translated instanceof WP_Post && $translated->post_status === 'publish') {
                 return $translated;
+            }
+        }
+
+        // Final fallback: if metadata/group linkage is incomplete, still resolve exact slug/path candidate
+        // instead of forcing a hard 404 on valid published content.
+        foreach ($any_lang->posts as $source_candidate) {
+            if (! $source_candidate instanceof WP_Post) {
+                continue;
+            }
+            if ($source_candidate->post_status !== 'publish') {
+                continue;
+            }
+
+            $permalink = get_permalink($source_candidate);
+            if (! is_string($permalink) || $permalink === '') {
+                continue;
+            }
+
+            $url_path = (string) wp_parse_url($permalink, PHP_URL_PATH);
+            $url_path = trim($url_path, '/');
+            $home     = (string) wp_parse_url(home_url('/'), PHP_URL_PATH);
+            $home     = trim($home, '/');
+
+            if ($home !== '' && strpos($url_path . '/', $home . '/') === 0) {
+                $url_path = substr($url_path, strlen($home) + 1);
+            }
+
+            if (preg_match('/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,4})?\//', $url_path)) {
+                $url_path = preg_replace('/^[^\/]+\/?/', '', $url_path) ?? $url_path;
+            }
+
+            if (trim($url_path, '/') === $normalized_path) {
+                return $source_candidate;
+            }
+
+            if ((string) $source_candidate->post_name === $leaf) {
+                return $source_candidate;
             }
         }
 

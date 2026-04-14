@@ -70,7 +70,11 @@ final class TranslatePlus_URL_Builder {
         }
 
         $request_lang = self::detect_request_language();
-        if ($request_lang !== '' && class_exists('TranslatePlus_Translation_Group', false)) {
+        if (
+            $request_lang !== ''
+            && self::should_force_request_language_for_post($post)
+            && class_exists('TranslatePlus_Translation_Group', false)
+        ) {
             $group = get_post_meta((int) $post->ID, TranslatePlus_Translation_Group::META_GROUP, true);
             if (is_string($group) && $group !== '') {
                 $translated_id = TranslatePlus_Translation_Group::find_post_in_group_by_language($group, $request_lang, $post->post_type);
@@ -93,6 +97,20 @@ final class TranslatePlus_URL_Builder {
         }
 
         return self::convert_url($permalink, $lang);
+    }
+
+    /**
+     * Apply request-language sibling remap only for the currently queried singular post.
+     * Prevents cross-language double-prefix URLs in switchers/menu lists.
+     */
+    private static function should_force_request_language_for_post(WP_Post $post): bool {
+        if (! is_singular()) {
+            return false;
+        }
+
+        $queried_id = get_queried_object_id();
+
+        return $queried_id > 0 && $queried_id === (int) $post->ID;
     }
 
     /**

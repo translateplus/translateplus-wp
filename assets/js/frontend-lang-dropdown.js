@@ -108,7 +108,7 @@
 		if (!a) {
 			return;
 		}
-		var root = a.closest(".translateplus-lang-dd, .translateplus-lang-switcher");
+		var root = a.closest(".translateplus-lang-dd, .translateplus-lang-switcher, .translateplus-parent-menu-item");
 		if (!root) {
 			return;
 		}
@@ -168,7 +168,11 @@
 	}
 
 	function onDocClick(e) {
-		if (e.target && e.target.closest && e.target.closest(".translateplus-lang-dd")) {
+		if (
+			e.target &&
+			e.target.closest &&
+			e.target.closest(".translateplus-lang-dd, .translateplus-lang-switcher, .translateplus-parent-menu-item")
+		) {
 			return;
 		}
 		closeAll();
