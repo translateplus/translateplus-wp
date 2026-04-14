@@ -105,7 +105,12 @@ final class TranslatePlus_Auto_Sync {
                 if (apply_filters('translateplus_auto_sync_create_missing', true, $post, $group)) {
                     self::ensure_missing_translation_posts($post, $group);
                 }
-                if (apply_filters('translateplus_auto_sync_translate_inline', true, $post_id, $post)) {
+                $should_translate_inline = apply_filters('translateplus_auto_sync_translate_inline', true, $post_id, $post);
+                if ($post->post_status === 'publish') {
+                    // Publish flow: defer translation payload to background for a smoother editor/publish request.
+                    $should_translate_inline = false;
+                }
+                if ($should_translate_inline) {
                     $fresh = get_post($post_id);
                     if ($fresh instanceof WP_Post) {
                         self::run_sync_for_post($fresh);
@@ -280,12 +285,16 @@ final class TranslatePlus_Auto_Sync {
                 continue;
             }
 
+            $slug = self::translate_slug_for_sibling($post, $sibling, $tgt_norm, $api_source);
+
             wp_update_post(
                 array(
                     'ID'           => $sibling->ID,
                     'post_title'   => $title,
                     'post_excerpt' => $excerpt,
                     'post_content' => $html,
+                    'post_name'    => $slug,
+                    'post_status'  => self::target_status_for_existing_translation($post, $sibling),
                 )
             );
             update_post_meta($sibling->ID, self::META_FINGERPRINT, self::hash_content_parts($title, $excerpt, $html));
@@ -339,7 +348,7 @@ final class TranslatePlus_Auto_Sync {
             $new_id = wp_insert_post(
                 array(
                     'post_type'    => $post->post_type,
-                    'post_status'  => 'draft',
+                    'post_status'  => self::target_status_for_new_translation($post),
                     'post_title'   => $title,
                     'post_name'    => '',
                     'post_content' => '',
@@ -449,5 +458,70 @@ final class TranslatePlus_Auto_Sync {
         $out = trim((string) $out);
 
         return $out !== '' ? $out : $text;
+    }
+
+    private static function translate_slug_for_sibling(WP_Post $source, WP_Post $sibling, string $target_lang, string $source_lang): string {
+        $source_slug = (string) $source->post_name;
+        if ($source_slug === '') {
+            $source_slug = sanitize_title((string) $source->post_title);
+        }
+
+        if (! TranslatePlus_Settings::is_auto_translate_slugs_enabled()) {
+            $translated = $source_slug;
+        } else {
+            $translated = self::translate_plain($source_slug, $target_lang, $source_lang);
+            if (is_wp_error($translated)) {
+                $translated = $source_slug;
+            }
+        }
+
+        $slug = sanitize_title((string) $translated);
+        if ($slug === '') {
+            $slug = sanitize_title((string) $source->post_title);
+        }
+        if ($slug === '') {
+            $slug = sanitize_title((string) $sibling->post_title);
+        }
+        if ($slug === '') {
+            $slug = 'translation';
+        }
+
+        return wp_unique_post_slug(
+            $slug,
+            (int) $sibling->ID,
+            self::target_status_for_existing_translation($source, $sibling),
+            $sibling->post_type,
+            (int) $sibling->post_parent
+        );
+    }
+
+    /**
+     * New translations should be published by default for immediate frontend availability.
+     */
+    private static function target_status_for_new_translation(WP_Post $source): string {
+        if (! TranslatePlus_Settings::is_auto_publish_translations_enabled()) {
+            return 'draft';
+        }
+
+        if ($source->post_status === 'publish' || $source->post_status === 'private' || $source->post_status === 'future') {
+            return $source->post_status;
+        }
+
+        return 'publish';
+    }
+
+    /**
+     * Align sibling visibility with source publish state.
+     */
+    private static function target_status_for_existing_translation(WP_Post $source, WP_Post $sibling): string {
+        if (! TranslatePlus_Settings::is_auto_publish_translations_enabled()) {
+            return $sibling->post_status;
+        }
+
+        if ($source->post_status === 'publish' || $source->post_status === 'private' || $source->post_status === 'future') {
+            return $source->post_status;
+        }
+
+        return 'publish';
     }
 }

@@ -16,7 +16,7 @@ final class TranslatePlus_Rewrites {
 
     public const QUERY_VAR_LANG = 'tp_lang';
 
-    public const QUERY_VAR_SLUG = 'tp_post_slug';
+    public const QUERY_VAR_PATH = 'tp_post_path';
 
     public static function init(): void {
         add_action('init', array(self::class, 'register_rewrite_rules'), 11);
@@ -33,11 +33,7 @@ final class TranslatePlus_Rewrites {
      * @return string Normalized language code (e.g. en).
      */
     public static function get_default_language_code(): string {
-        $code = apply_filters('translateplus_permalink_default_language', TranslatePlus_API::DEFAULT_SOURCE);
-
-        return is_string($code) && $code !== ''
-            ? ( TranslatePlus_Languages::normalize($code) ?? TranslatePlus_API::DEFAULT_SOURCE )
-            : TranslatePlus_API::DEFAULT_SOURCE;
+        return TranslatePlus_URL_Builder::get_default_language_code();
     }
 
     /**
@@ -46,7 +42,7 @@ final class TranslatePlus_Rewrites {
      * @return bool
      */
     private static function should_prefix_default_language(): bool {
-        return (bool) apply_filters('translateplus_permalink_prefix_default_language', false);
+        return TranslatePlus_URL_Builder::should_prefix_default_language();
     }
 
     /**
@@ -105,78 +101,7 @@ final class TranslatePlus_Rewrites {
      * @param WP_Post $post      Post.
      */
     private static function maybe_prefix_permalink(string $permalink, WP_Post $post): string {
-        if (! in_array($post->post_type, TranslatePlus_Settings::get_translatable_post_types(), true)) {
-            return $permalink;
-        }
-
-        $stored = TranslatePlus_Translation_Group::get_post_language($post->ID);
-        $lang     = TranslatePlus_Languages::normalize($stored);
-        if ($lang === null || $lang === 'auto') {
-            $lang = self::get_default_language_code();
-        }
-
-        $default = self::get_default_language_code();
-        if ($lang === $default && ! self::should_prefix_default_language()) {
-            return $permalink;
-        }
-
-        return self::insert_language_after_home_path($permalink, $lang);
-    }
-
-    /**
-     * Insert /{lang}/ after the home path (works for subdirectory installs).
-     *
-     * @param string $permalink Full URL.
-     * @param string $lang      Normalized language code.
-     */
-    private static function insert_language_after_home_path(string $permalink, string $lang): string {
-        $lang = TranslatePlus_Languages::normalize($lang) ?? $lang;
-        if (! is_string($lang) || $lang === '' || $lang === 'auto') {
-            return $permalink;
-        }
-
-        $parts = wp_parse_url($permalink);
-        if (! is_array($parts) || empty($parts['host'])) {
-            return $permalink;
-        }
-
-        $home      = wp_parse_url(home_url());
-        $home_path = isset($home['path']) ? trim((string) $home['path'], '/') : '';
-
-        $link_path = isset($parts['path']) ? (string) $parts['path'] : '/';
-        $had_trailing = ( substr($link_path, -1) === '/' );
-
-        $link_trim = trim($link_path, '/');
-
-        if ($home_path !== '' && strpos($link_trim . '/', $home_path . '/') === 0) {
-            $rest = substr($link_trim, strlen($home_path) + 1);
-        } elseif ($home_path === '') {
-            $rest = $link_trim;
-        } else {
-            return $permalink;
-        }
-
-        if ($rest !== '' && preg_match('/^' . preg_quote($lang, '/') . '\//', $rest)) {
-            return $permalink;
-        }
-
-        $prefix   = $home_path !== '' ? $home_path . '/' : '';
-        $new_path = '/' . $prefix . $lang . '/' . $rest;
-        $new_path = str_replace('//', '/', $new_path);
-
-        if ($had_trailing) {
-            $new_path = trailingslashit($new_path);
-        } else {
-            $new_path = untrailingslashit($new_path);
-        }
-
-        $scheme   = isset($parts['scheme']) ? $parts['scheme'] . '://' : '';
-        $host     = $parts['host'];
-        $port     = isset($parts['port']) ? ':' . $parts['port'] : '';
-        $query    = isset($parts['query']) ? '?' . $parts['query'] : '';
-        $fragment = isset($parts['fragment']) ? '#' . $parts['fragment'] : '';
-
-        return $scheme . $host . $port . $new_path . $query . $fragment;
+        return TranslatePlus_URL_Builder::build_permalink_for_post($permalink, $post);
     }
 
     /**
@@ -201,8 +126,14 @@ final class TranslatePlus_Rewrites {
         }
 
         add_rewrite_rule(
+            '^((' . self::build_language_codes_pattern() . '))/?$',
+            'index.php?' . self::QUERY_VAR_LANG . '=$matches[1]',
+            'top'
+        );
+
+        add_rewrite_rule(
             $pattern,
-            'index.php?' . self::QUERY_VAR_LANG . '=$matches[1]&' . self::QUERY_VAR_SLUG . '=$matches[2]',
+            'index.php?' . self::QUERY_VAR_LANG . '=$matches[1]&' . self::QUERY_VAR_PATH . '=$matches[2]',
             'top'
         );
     }
@@ -213,6 +144,18 @@ final class TranslatePlus_Rewrites {
      * @return string|null PCRE without delimiters, or null if no codes loaded.
      */
     private static function build_language_prefix_rule_pattern(): ?string {
+        $codes_pattern = self::build_language_codes_pattern();
+        if ($codes_pattern === null) {
+            return null;
+        }
+
+        return '^((' . $codes_pattern . '))/(.+?)/?$';
+    }
+
+    /**
+     * Build alternation segment for supported language codes.
+     */
+    private static function build_language_codes_pattern(): ?string {
         $codes = array_keys(TranslatePlus_Languages::get_code_to_label());
         $parts = array();
         foreach ($codes as $code) {
@@ -226,7 +169,7 @@ final class TranslatePlus_Rewrites {
             return null;
         }
 
-        return '^((' . implode('|', $parts) . '))/([^/]+)/?$';
+        return implode('|', $parts);
     }
 
     /**
@@ -235,7 +178,7 @@ final class TranslatePlus_Rewrites {
      */
     public static function register_query_vars(array $vars): array {
         $vars[] = self::QUERY_VAR_LANG;
-        $vars[] = self::QUERY_VAR_SLUG;
+        $vars[] = self::QUERY_VAR_PATH;
 
         return $vars;
     }
@@ -263,9 +206,9 @@ final class TranslatePlus_Rewrites {
         }
 
         $lang_raw = $query->get(self::QUERY_VAR_LANG);
-        $slug     = $query->get(self::QUERY_VAR_SLUG);
+        $path     = $query->get(self::QUERY_VAR_PATH);
 
-        if (! is_string($lang_raw) || $lang_raw === '' || ! is_string($slug) || $slug === '') {
+        if (! is_string($lang_raw) || $lang_raw === '' || ! is_string($path) || $path === '') {
             return;
         }
 
@@ -278,14 +221,14 @@ final class TranslatePlus_Rewrites {
 
         $query->set(self::QUERY_VAR_LANG, $lang);
 
-        $slug_sanitized = sanitize_title($slug);
-        if ($slug_sanitized === '') {
+        $requested_path = trim((string) wp_unslash($path), '/');
+        if ($requested_path === '') {
             $query->set_404();
 
             return;
         }
 
-        $resolved = self::find_published_post_by_slug_and_language($slug_sanitized, $lang);
+        $resolved = self::find_published_post_by_path_and_language($requested_path, $lang);
         if (! $resolved instanceof WP_Post) {
             $query->set_404();
 
@@ -293,7 +236,14 @@ final class TranslatePlus_Rewrites {
         }
 
         // Resolve as a normal singular request by ID (avoids name + meta_query quirks on the main query).
-        $query->set('p', (int) $resolved->ID);
+        // Pages need page_id; posts/custom post types use p.
+        if ($resolved->post_type === 'page') {
+            $query->set('page_id', (int) $resolved->ID);
+            $query->set('p', 0);
+        } else {
+            $query->set('p', (int) $resolved->ID);
+            $query->set('page_id', 0);
+        }
         $query->set('post_type', $resolved->post_type);
         $query->set('name', '');
         $query->set('pagename', '');
@@ -303,18 +253,38 @@ final class TranslatePlus_Rewrites {
     /**
      * Find a published translatable post by slug and content language meta.
      */
-    private static function find_published_post_by_slug_and_language(string $slug, string $lang): ?WP_Post {
+    private static function find_published_post_by_path_and_language(string $path, string $lang): ?WP_Post {
         $types = TranslatePlus_Settings::get_translatable_post_types();
         if ($types === array()) {
+            return null;
+        }
+
+        $normalized_path = trim($path, '/');
+        if ($normalized_path === '') {
+            return null;
+        }
+
+        // First try direct path resolution (works for pages and hierarchical types).
+        $direct = get_page_by_path($normalized_path, OBJECT, $types);
+        if ($direct instanceof WP_Post && $direct->post_status === 'publish') {
+            $direct_lang = TranslatePlus_Languages::normalize(TranslatePlus_Translation_Group::get_post_language((int) $direct->ID));
+            if ($direct_lang === $lang) {
+                return $direct;
+            }
+        }
+
+        $segments = explode('/', $normalized_path);
+        $leaf     = sanitize_title((string) end($segments));
+        if ($leaf === '') {
             return null;
         }
 
         $q = new WP_Query(
             array(
                 'post_type'              => $types,
-                'name'                   => $slug,
+                'name'                   => $leaf,
                 'post_status'            => 'publish',
-                'posts_per_page'         => 1,
+                'posts_per_page'         => 20,
                 'no_found_rows'          => true,
                 'ignore_sticky_posts'    => true,
                 'update_post_meta_cache' => true,
@@ -334,10 +304,72 @@ final class TranslatePlus_Rewrites {
             )
         );
 
-        if (! $q->have_posts() || ! $q->posts[0] instanceof WP_Post) {
+        if (! $q->have_posts()) {
             return null;
         }
 
-        return $q->posts[0];
+        foreach ($q->posts as $candidate) {
+            if (! $candidate instanceof WP_Post) {
+                continue;
+            }
+            $permalink = get_permalink($candidate);
+            if (! is_string($permalink) || $permalink === '') {
+                continue;
+            }
+
+            $url_path = (string) wp_parse_url($permalink, PHP_URL_PATH);
+            $url_path = trim($url_path, '/');
+            $home     = (string) wp_parse_url(home_url('/'), PHP_URL_PATH);
+            $home     = trim($home, '/');
+
+            if ($home !== '' && strpos($url_path . '/', $home . '/') === 0) {
+                $url_path = substr($url_path, strlen($home) + 1);
+            }
+
+            // Remove leading language segment from permalink path.
+            if (preg_match('/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,4})?\//', $url_path)) {
+                $url_path = preg_replace('/^[^\/]+\/?/', '', $url_path) ?? $url_path;
+            }
+
+            if (trim($url_path, '/') === $normalized_path) {
+                return $candidate;
+            }
+        }
+
+        // Fallback: incoming path may use a source-language slug. Resolve by group and switch to requested language.
+        $any_lang = new WP_Query(
+            array(
+                'post_type'              => $types,
+                'name'                   => $leaf,
+                'post_status'            => 'publish',
+                'posts_per_page'         => 20,
+                'no_found_rows'          => true,
+                'ignore_sticky_posts'    => true,
+                'update_post_meta_cache' => true,
+            )
+        );
+
+        foreach ($any_lang->posts as $source_candidate) {
+            if (! $source_candidate instanceof WP_Post) {
+                continue;
+            }
+
+            $group = get_post_meta((int) $source_candidate->ID, TranslatePlus_Translation_Group::META_GROUP, true);
+            if (! is_string($group) || $group === '') {
+                continue;
+            }
+
+            $translated_id = TranslatePlus_Translation_Group::find_post_in_group_by_language($group, $lang, $source_candidate->post_type);
+            if ($translated_id <= 0) {
+                continue;
+            }
+
+            $translated = get_post($translated_id);
+            if ($translated instanceof WP_Post && $translated->post_status === 'publish') {
+                return $translated;
+            }
+        }
+
+        return null;
     }
 }

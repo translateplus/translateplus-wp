@@ -6,6 +6,80 @@
 
 	var STORAGE_KEY = "translateplus_preferred_lang";
 
+	function getStoredLanguage() {
+		try {
+			var code = localStorage.getItem(STORAGE_KEY);
+			if (!code || typeof code !== "string") {
+				return "";
+			}
+			code = code.trim().toLowerCase();
+			return code || "";
+		} catch (e) {
+			return "";
+		}
+	}
+
+	function hasLanguagePrefix(pathname) {
+		if (!pathname || typeof pathname !== "string") {
+			return false;
+		}
+		return /^\/[a-z]{2,3}(?:-[a-z0-9]{2,4})?(?:\/|$)/i.test(pathname);
+	}
+
+	function isLocalHttpUrl(url) {
+		if (!url || !url.href || !url.protocol) {
+			return false;
+		}
+		if (url.protocol !== "http:" && url.protocol !== "https:") {
+			return false;
+		}
+		return url.origin === window.location.origin;
+	}
+
+	function withLanguagePrefix(pathname, lang) {
+		var cleanPath = pathname || "/";
+		if (cleanPath.charAt(0) !== "/") {
+			cleanPath = "/" + cleanPath;
+		}
+		if (hasLanguagePrefix(cleanPath)) {
+			return cleanPath;
+		}
+		if (cleanPath === "/") {
+			return "/" + lang + "/";
+		}
+		return "/" + lang + cleanPath;
+	}
+
+	function enforcePreferredLanguageOnLoad() {
+		var lang = getStoredLanguage();
+		if (!lang) {
+			return;
+		}
+
+		var current = new URL(window.location.href);
+		if (!isLocalHttpUrl(current)) {
+			return;
+		}
+		if (hasLanguagePrefix(current.pathname)) {
+			return;
+		}
+
+		// Skip admin/login routes.
+		if (/^\/wp-admin(?:\/|$)/.test(current.pathname) || /^\/wp-login\.php(?:\/|$)/.test(current.pathname)) {
+			return;
+		}
+
+		// Only force redirect for site root-like paths to avoid generating /{lang}/slug 404s
+		// when a specific translation does not exist for the current content URL.
+		var rootish = current.pathname === "/" || /^\/index\.php\/?$/.test(current.pathname);
+		if (!rootish) {
+			return;
+		}
+
+		current.pathname = withLanguagePrefix(current.pathname, lang);
+		window.location.replace(current.toString());
+	}
+
 	function persistLanguageFromLink(anchor) {
 		if (!anchor || !anchor.getAttribute) {
 			return;
@@ -109,5 +183,6 @@
 	document.addEventListener("click", onDocClick);
 	document.addEventListener("keydown", onKey);
 
+	enforcePreferredLanguageOnLoad();
 	document.querySelectorAll("[data-translateplus-lang-dd]").forEach(initRoot);
 })();

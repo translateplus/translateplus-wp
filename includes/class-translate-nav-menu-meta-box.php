@@ -13,9 +13,25 @@ if (! defined('ABSPATH')) {
  * Registers the "TranslatePlus" box with a checklist item wired to the core add-to-menu flow.
  */
 final class TranslatePlus_Nav_Menu_Meta_Box {
+    public const MENU_ITEM_META_KEY = '_translateplus_menu_item';
+
+    /**
+     * @return array<string, int>
+     */
+    public static function default_switcher_options(): array {
+        return array(
+            'hide_if_no_translation' => 0,
+            'hide_current'           => 0,
+            'show_flags'             => 1,
+            'show_names'             => 1,
+            'dropdown'               => 0,
+        );
+    }
 
     public static function init(): void {
         add_action('load-nav-menus.php', array(self::class, 'register_meta_box'));
+        add_action('wp_nav_menu_item_custom_fields', array(self::class, 'render_menu_item_fields'), 10, 5);
+        add_action('wp_update_nav_menu_item', array(self::class, 'save_menu_item_fields'), 10, 3);
     }
 
     public static function register_meta_box(): void {
@@ -68,7 +84,6 @@ final class TranslatePlus_Nav_Menu_Meta_Box {
         // IDs must match WordPress nav-menu.js: click #submit-posttype-{slug} runs $('#posttype-{slug}').addSelectedToMenu().
         $post_type_box_id = 'translateplus-lang-switcher';
         ?>
-        <p class="howto"><?php esc_html_e('Select “Language Switcher” below, then click “Add to Menu”.', 'translateplus'); ?></p>
         <div id="<?php echo esc_attr('posttype-' . $post_type_box_id); ?>" class="posttypediv">
             <div id="<?php echo esc_attr('tabs-panel-posttype-' . $post_type_box_id); ?>" class="tabs-panel tabs-panel-active" role="region"
                 aria-label="<?php esc_attr_e('TranslatePlus', 'translateplus'); ?>" tabindex="0">
@@ -99,5 +114,109 @@ final class TranslatePlus_Nav_Menu_Meta_Box {
             </p>
         </div>
         <?php
+    }
+
+    /**
+     * @param int     $item_id Menu item ID.
+     * @param WP_Post $item    Menu item object.
+     */
+    public static function render_menu_item_fields(int $item_id, $item, int $depth, $args, int $id): void {
+        if (! $item instanceof WP_Post) {
+            return;
+        }
+        if (! TranslatePlus_Frontend_Lang_Dropdown::menu_item_is_language_switcher($item)) {
+            return;
+        }
+
+        $options = self::get_menu_item_options($item_id);
+        ?>
+        <p class="field-translateplus-switcher description description-wide">
+            <strong><?php esc_html_e('TranslatePlus language switcher options', 'translateplus'); ?></strong>
+        </p>
+        <p class="field-translateplus-switcher description">
+            <label>
+                <input type="checkbox" name="menu-item-translateplus-hide-current[<?php echo esc_attr((string) $item_id); ?>]" value="1" <?php checked((int) $options['hide_current'], 1); ?> />
+                <?php esc_html_e('Hide current language', 'translateplus'); ?>
+            </label>
+            <br />
+            <label>
+                <input type="checkbox" name="menu-item-translateplus-hide-no-translation[<?php echo esc_attr((string) $item_id); ?>]" value="1" <?php checked((int) $options['hide_if_no_translation'], 1); ?> />
+                <?php esc_html_e('Hide languages without translation', 'translateplus'); ?>
+            </label>
+            <br />
+            <label>
+                <input type="checkbox" name="menu-item-translateplus-show-flags[<?php echo esc_attr((string) $item_id); ?>]" value="1" <?php checked((int) $options['show_flags'], 1); ?> />
+                <?php esc_html_e('Show flags', 'translateplus'); ?>
+            </label>
+            <br />
+            <label>
+                <input type="checkbox" name="menu-item-translateplus-show-names[<?php echo esc_attr((string) $item_id); ?>]" value="1" <?php checked((int) $options['show_names'], 1); ?> />
+                <?php esc_html_e('Show language names', 'translateplus'); ?>
+            </label>
+            <br />
+            <label>
+                <input type="checkbox" name="menu-item-translateplus-dropdown[<?php echo esc_attr((string) $item_id); ?>]" value="1" <?php checked((int) $options['dropdown'], 1); ?> />
+                <?php esc_html_e('Display as dropdown submenu', 'translateplus'); ?>
+            </label>
+        </p>
+        <?php
+    }
+
+    /**
+     * @param int $menu_id         Menu ID.
+     * @param int $menu_item_db_id Menu item DB ID.
+     * @param array<string, mixed> $args Args.
+     */
+    public static function save_menu_item_fields(int $menu_id, int $menu_item_db_id, array $args): void {
+        if (! current_user_can('edit_theme_options')) {
+            return;
+        }
+        if (! isset($_REQUEST['update-nav-menu-nonce']) || ! wp_verify_nonce(sanitize_text_field(wp_unslash($_REQUEST['update-nav-menu-nonce'])), 'update-nav_menu')) {
+            return;
+        }
+
+        $item = get_post($menu_item_db_id);
+        if (! $item instanceof WP_Post || ! TranslatePlus_Frontend_Lang_Dropdown::menu_item_is_language_switcher($item)) {
+            return;
+        }
+
+        $options = self::default_switcher_options();
+        $options['hide_current'] = self::is_checked_for_item('menu-item-translateplus-hide-current', $menu_item_db_id) ? 1 : 0;
+        $options['hide_if_no_translation'] = self::is_checked_for_item('menu-item-translateplus-hide-no-translation', $menu_item_db_id) ? 1 : 0;
+        $options['show_flags'] = self::is_checked_for_item('menu-item-translateplus-show-flags', $menu_item_db_id) ? 1 : 0;
+        $options['show_names'] = self::is_checked_for_item('menu-item-translateplus-show-names', $menu_item_db_id) ? 1 : 0;
+        $options['dropdown'] = self::is_checked_for_item('menu-item-translateplus-dropdown', $menu_item_db_id) ? 1 : 0;
+
+        update_post_meta($menu_item_db_id, self::MENU_ITEM_META_KEY, $options);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public static function get_menu_item_options(int $menu_item_id): array {
+        $defaults = self::default_switcher_options();
+        $saved = get_post_meta($menu_item_id, self::MENU_ITEM_META_KEY, true);
+        if (! is_array($saved)) {
+            return $defaults;
+        }
+
+        return array(
+            'hide_if_no_translation' => ! empty($saved['hide_if_no_translation']) ? 1 : 0,
+            'hide_current'           => ! empty($saved['hide_current']) ? 1 : 0,
+            'show_flags'             => ! empty($saved['show_flags']) ? 1 : 0,
+            'show_names'             => ! empty($saved['show_names']) ? 1 : 0,
+            'dropdown'               => ! empty($saved['dropdown']) ? 1 : 0,
+        );
+    }
+
+    private static function is_checked_for_item(string $field_name, int $menu_item_id): bool {
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Verified in save_menu_item_fields().
+        if (! isset($_POST[ $field_name ]) || ! is_array($_POST[ $field_name ])) {
+            return false;
+        }
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Verified in save_menu_item_fields().
+        $map = wp_unslash($_POST[ $field_name ]);
+
+        return isset($map[ $menu_item_id ]) && (string) $map[ $menu_item_id ] === '1';
     }
 }

@@ -149,8 +149,201 @@ final class TranslatePlus_Frontend_Lang_Dropdown {
         add_filter('nav_menu_item_title', array(self::class, 'filter_nav_menu_item_title_shortcode'), 1000, 4);
         add_filter('walker_nav_menu_start_el', array(self::class, 'filter_walker_nav_menu_start_el'), 10, 4);
         add_filter('wp_nav_menu_items', array(self::class, 'filter_wp_nav_menu_items_replace_switcher_anchor'), 25, 2);
+        add_filter('wp_get_nav_menu_items', array(self::class, 'filter_wp_get_nav_menu_items_expand_switcher'), 20, 3);
+        add_filter('nav_menu_link_attributes', array(self::class, 'filter_nav_menu_link_attributes'), 10, 2);
         add_filter('nav_menu_css_class', array(self::class, 'filter_nav_menu_css_class'), 10, 4);
         add_filter('render_block', array(self::class, 'filter_render_block_shortcodes'), 20, 2);
+    }
+
+    /**
+     * Polylang-like behavior: split one placeholder menu item into one item per language on frontend.
+     *
+     * @param array<int, mixed> $items
+     * @param mixed             $menu
+     * @param array<string, mixed> $args
+     * @return array<int, mixed>
+     */
+    public static function filter_wp_get_nav_menu_items_expand_switcher(array $items, $menu, array $args): array {
+        if (is_admin() || $items === array()) {
+            return $items;
+        }
+
+        $post_id = self::resolve_post_id_for_render(null);
+        if ($post_id <= 0) {
+            return $items;
+        }
+        $post = get_post($post_id);
+        if (! $post instanceof WP_Post) {
+            return $items;
+        }
+
+        $switcher_items = TranslatePlus_Translation_Group::get_frontend_switcher_items($post);
+        if (count($switcher_items) < 2) {
+            return $items;
+        }
+
+        $new_items = array();
+        $offset = 0;
+        foreach ($items as $item) {
+            if (! self::menu_item_is_language_switcher($item)) {
+                if (is_object($item) && isset($item->menu_order)) {
+                    $item->menu_order = (int) $item->menu_order + $offset;
+                }
+                $new_items[] = $item;
+                continue;
+            }
+
+            $menu_item_id = (is_object($item) && isset($item->ID)) ? (int) $item->ID : 0;
+            $opts = self::get_switcher_menu_options($menu_item_id);
+            $rows = self::apply_switcher_visibility_options($switcher_items, $opts);
+            if ($rows === array()) {
+                continue;
+            }
+
+            $base_order = is_object($item) && isset($item->menu_order) ? (int) $item->menu_order : 0;
+            $index = 0;
+
+            if (! empty($opts['dropdown'])) {
+                $current = self::pick_current_language_row($rows);
+                $parent = clone $item;
+                if (isset($parent->ID)) {
+                    $parent->ID = (string) $parent->ID . '-tp-parent';
+                }
+                $parent->menu_order = $base_order + 1;
+                $parent->title = self::build_switcher_menu_title($current, $opts);
+                $parent->attr_title = '';
+                $parent->url = '#';
+                $parent->classes = array('translateplus-parent-menu-item');
+                $new_items[] = $parent;
+                ++$offset;
+                ++$index;
+            }
+
+            foreach ($rows as $lang) {
+                ++$index;
+                $lang_item = clone $item;
+                if (isset($lang_item->ID)) {
+                    $lang_item->ID = (string) $lang_item->ID . '-' . $lang['code'];
+                }
+                if (isset($lang_item->db_id)) {
+                    $lang_item->db_id = 0;
+                }
+                $lang_item->menu_item_parent = ! empty($opts['dropdown']) && isset($item->db_id)
+                    ? (int) $item->db_id
+                    : (isset($item->menu_item_parent) ? (int) $item->menu_item_parent : 0);
+                $lang_item->menu_order = $base_order + $index;
+                $lang_item->title = self::build_switcher_menu_title($lang, $opts);
+                $lang_item->attr_title = '';
+                $lang_item->url = (! empty($lang['missing']) || empty($lang['url'])) ? '#' : $lang['url'];
+                $lang_item->lang = (string) $lang['code'];
+                $classes = array('translateplus-lang-menu-item', 'translateplus-lang-menu-item-' . sanitize_html_class((string) $lang['code']));
+                if (! empty($lang['current'])) {
+                    $classes[] = 'current-lang';
+                }
+                if (! empty($lang['missing'])) {
+                    $classes[] = 'no-translation';
+                }
+                $lang_item->classes = $classes;
+                $new_items[] = $lang_item;
+                ++$offset;
+            }
+            --$offset;
+        }
+
+        return $new_items;
+    }
+
+    /**
+     * Add hreflang/lang attributes for generated language menu items.
+     *
+     * @param array<string, string> $atts
+     * @param mixed                 $item
+     * @return array<string, string>
+     */
+    public static function filter_nav_menu_link_attributes(array $atts, $item): array {
+        if (is_object($item) && isset($item->lang) && is_string($item->lang) && $item->lang !== '') {
+            $atts['lang'] = $item->lang;
+            $atts['hreflang'] = $item->lang;
+        }
+
+        if (is_object($item) && isset($item->classes) && is_array($item->classes) && in_array('no-translation', $item->classes, true)) {
+            $atts['aria-disabled'] = 'true';
+        }
+
+        return $atts;
+    }
+
+    /**
+     * @param int $menu_item_id
+     * @return array<string,int>
+     */
+    private static function get_switcher_menu_options(int $menu_item_id): array {
+        if ($menu_item_id > 0 && class_exists('TranslatePlus_Nav_Menu_Meta_Box', false)) {
+            return \TranslatePlus_Nav_Menu_Meta_Box::get_menu_item_options($menu_item_id);
+        }
+
+        return array(
+            'hide_if_no_translation' => 0,
+            'hide_current'           => 0,
+            'show_flags'             => 1,
+            'show_names'             => 1,
+            'dropdown'               => 0,
+        );
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @param array<string,int>              $opts
+     * @return array<int,array<string,mixed>>
+     */
+    private static function apply_switcher_visibility_options(array $rows, array $opts): array {
+        $out = array();
+        foreach ($rows as $row) {
+            if (! empty($opts['hide_current']) && ! empty($row['current'])) {
+                continue;
+            }
+            if (! empty($opts['hide_if_no_translation']) && ! empty($row['missing'])) {
+                continue;
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<int,array<string,mixed>> $rows
+     * @return array<string,mixed>
+     */
+    private static function pick_current_language_row(array $rows): array {
+        foreach ($rows as $row) {
+            if (! empty($row['current'])) {
+                return $row;
+            }
+        }
+
+        return $rows[0];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @param array<string,int>   $opts
+     */
+    private static function build_switcher_menu_title(array $row, array $opts): string {
+        $show_flags = ! empty($opts['show_flags']);
+        $show_names = ! empty($opts['show_names']);
+        $parts = array();
+        if ($show_flags) {
+            $parts[] = self::flag_emoji((string) $row['code']);
+        }
+        if ($show_names) {
+            $parts[] = (string) $row['label'];
+        }
+        if (! $show_flags && ! $show_names) {
+            $parts[] = strtoupper((string) $row['code']);
+        }
+
+        return trim(implode(' ', $parts));
     }
 
     /**

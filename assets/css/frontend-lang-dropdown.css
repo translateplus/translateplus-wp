@@ -141,16 +141,31 @@ header .translateplus-lang-dd {
 	border-radius: 0.5rem;
 	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
 	z-index: 100060;
+	opacity: 0;
+	transform: translateY(-4px) scale(0.985);
+	transform-origin: top left;
+	visibility: hidden;
+	pointer-events: none;
+	transition: opacity 0.16s ease, transform 0.18s ease, visibility 0s linear 0.18s;
 }
 
 /* Open state: panel must stay out of document flow (themes often reset ul display) */
 .translateplus-lang-dd.is-open .translateplus-lang-dd__list {
 	display: block !important;
 	position: absolute !important;
+	opacity: 1;
+	transform: translateY(0) scale(1);
+	visibility: visible;
+	pointer-events: auto;
+	transition-delay: 0s;
 }
 
 .translateplus-lang-dd__list[hidden] {
-	display: none !important;
+	display: block !important;
+	opacity: 0;
+	transform: translateY(-4px) scale(0.985);
+	visibility: hidden;
+	pointer-events: none;
 }
 
 .translateplus-lang-dd__item {
@@ -165,12 +180,14 @@ header .translateplus-lang-dd {
 	padding: 0.55rem 0.85rem;
 	color: #374151;
 	text-decoration: none;
-	transition: background 0.12s ease;
+	border-radius: 0.4rem;
+	transition: background-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
 }
 
 .translateplus-lang-dd__link:hover {
 	background: #f9fafb;
 	color: #111827;
+	transform: translateX(1px);
 }
 
 .translateplus-lang-dd__item.is-active .translateplus-lang-dd__link {
@@ -179,6 +196,7 @@ header .translateplus-lang-dd {
 	font-weight: 600;
 	cursor: default;
 	pointer-events: none;
+	box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.22);
 }
 
 .translateplus-lang-dd__item.is-active .translateplus-lang-dd__link:hover {
@@ -213,6 +231,14 @@ header .translateplus-lang-dd {
 
 .translateplus-lang-dd__item.is-active .translateplus-lang-dd__item-code {
 	color: #60a5fa;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.translateplus-lang-dd__chev,
+	.translateplus-lang-dd__list,
+	.translateplus-lang-dd__link {
+		transition: none !important;
+	}
 }
 
 /* Settings: hide flag emoji in dropdown */

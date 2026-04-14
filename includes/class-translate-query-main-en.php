@@ -41,11 +41,11 @@ final class TranslatePlus_Query_Main_En {
             return;
         }
 
-        // Language-prefixed permalinks ({lang}/{slug}) set tp_lang; do not merge English-only meta or requests 404.
+        // Language-prefixed permalinks (/{lang}/...) set query vars; do not force English-only meta.
         if (class_exists('TranslatePlus_Rewrites', false)) {
             $tp_lang = $query->get(TranslatePlus_Rewrites::QUERY_VAR_LANG);
-            $tp_slug = $query->get(TranslatePlus_Rewrites::QUERY_VAR_SLUG);
-            if ((is_string($tp_lang) && $tp_lang !== '') || (is_string($tp_slug) && $tp_slug !== '')) {
+            $tp_path = $query->get(TranslatePlus_Rewrites::QUERY_VAR_PATH);
+            if ((is_string($tp_lang) && $tp_lang !== '') || (is_string($tp_path) && $tp_path !== '')) {
                 return;
             }
         }

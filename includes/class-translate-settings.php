@@ -44,6 +44,16 @@ final class TranslatePlus_Settings {
     public const OPTION_AUTO_LANGUAGE_REDIRECT = 'translateplus_auto_language_redirect';
 
     /**
+     * When "1", newly created translations are published immediately; when "0", they are created as drafts.
+     */
+    public const OPTION_AUTO_PUBLISH_TRANSLATIONS = 'translateplus_auto_publish_translations';
+
+    /**
+     * When "1", translated posts/pages get translated slugs automatically.
+     */
+    public const OPTION_AUTO_TRANSLATE_SLUGS = 'translateplus_auto_translate_slugs';
+
+    /**
      * Front-end / menu language switcher layout: "dropdown" (toggle + list) or "inline" (horizontal links).
      */
     public const OPTION_FRONTEND_SWITCHER_DISPLAY = 'translateplus_frontend_switcher_display';
@@ -52,6 +62,11 @@ final class TranslatePlus_Settings {
      * When "1", show flag emoji next to language labels in the switcher (dropdown and inline).
      */
     public const OPTION_FRONTEND_SWITCHER_FLAGS = 'translateplus_frontend_switcher_flags';
+
+    /**
+     * URL mode: whether default language should have a directory prefix.
+     */
+    public const OPTION_URL_MODE = 'translateplus_url_mode';
 
     /**
      * Marketing / billing site (upgrade CTA).
@@ -275,6 +290,9 @@ final class TranslatePlus_Settings {
             self::OPTION_TRANSLATION_MODE,
             self::OPTION_EDITOR_MANUAL_UI,
             self::OPTION_AUTO_LANGUAGE_REDIRECT,
+            self::OPTION_AUTO_PUBLISH_TRANSLATIONS,
+            self::OPTION_AUTO_TRANSLATE_SLUGS,
+            self::OPTION_URL_MODE,
             self::OPTION_FRONTEND_SWITCHER_DISPLAY,
             self::OPTION_FRONTEND_SWITCHER_FLAGS,
         );
@@ -505,7 +523,28 @@ final class TranslatePlus_Settings {
      * @return array<string, string> slug => label
      */
     public static function get_post_types_for_settings_ui(): array {
-        $objects = get_post_types(array('show_ui' => true), 'objects');
+        $objects = get_post_types(
+            array(
+                'public'   => true,
+                '_builtin' => false,
+            ),
+            'objects'
+        );
+
+        // Polylang-style UX: custom public types list, while keeping core post/page selectable.
+        $core_objects = get_post_types(
+            array(
+                'show_ui' => true,
+                '_builtin' => true,
+            ),
+            'objects'
+        );
+        foreach (array('post', 'page') as $core_slug) {
+            if (isset($core_objects[ $core_slug ]) && $core_objects[ $core_slug ] instanceof WP_Post_Type) {
+                $objects[ $core_slug ] = $core_objects[ $core_slug ];
+            }
+        }
+
         $skip    = self::internal_post_types_blacklist();
         $out     = array();
 
@@ -646,51 +685,13 @@ final class TranslatePlus_Settings {
      * General tab: shortcode help for the front-end language dropdown.
      */
     private static function render_language_switcher_shortcode_help_card(): void {
-        $switcher_display = self::get_frontend_switcher_display();
-        $switcher_flags   = self::is_frontend_switcher_flags_enabled() ? '1' : '0';
         ?>
         <div class="translateplus-card translateplus-card--shortcode-help">
             <h2 class="translateplus-card__title"><?php esc_html_e('Front-end language switcher', 'translateplus'); ?></h2>
             <p class="translateplus-card__subtitle">
-                <?php esc_html_e('Show the language switcher in navigation menus, shortcodes, and above post content. Choose layout and whether to show flag emoji.', 'translateplus'); ?>
+                <?php esc_html_e('Show the language switcher in navigation menus, shortcodes, and above post content.', 'translateplus'); ?>
             </p>
             <div class="translateplus-card__body">
-                <fieldset class="translateplus-card__fieldset" style="margin:0 0 1.25rem;padding:0;border:0;">
-                    <legend class="screen-reader-text"><?php esc_html_e('Menu and switcher appearance', 'translateplus'); ?></legend>
-                    <p style="margin:0 0 8px;">
-                        <label for="translateplus-frontend-switcher-display">
-                            <strong><?php esc_html_e('Menu & switcher layout', 'translateplus'); ?></strong>
-                        </label>
-                    </p>
-                    <select
-                        name="<?php echo esc_attr(self::OPTION_FRONTEND_SWITCHER_DISPLAY); ?>"
-                        id="translateplus-frontend-switcher-display"
-                        class="regular-text"
-                        style="max-width:100%;"
-                    >
-                        <option value="dropdown" <?php selected($switcher_display, 'dropdown'); ?>>
-                            <?php esc_html_e('Dropdown — button opens a list (recommended for menus)', 'translateplus'); ?>
-                        </option>
-                        <option value="inline" <?php selected($switcher_display, 'inline'); ?>>
-                            <?php esc_html_e('Inline — languages in a row (compact)', 'translateplus'); ?>
-                        </option>
-                    </select>
-                    <p style="margin:14px 0 8px;">
-                        <input type="hidden" name="<?php echo esc_attr(self::OPTION_FRONTEND_SWITCHER_FLAGS); ?>" value="0" />
-                        <label>
-                            <input
-                                type="checkbox"
-                                name="<?php echo esc_attr(self::OPTION_FRONTEND_SWITCHER_FLAGS); ?>"
-                                value="1"
-                                <?php checked($switcher_flags, '1'); ?>
-                            />
-                            <?php esc_html_e('Show flag emoji next to language names', 'translateplus'); ?>
-                        </label>
-                    </p>
-                    <p class="description" style="margin:0;">
-                        <?php esc_html_e('Applies to the #tp-lang-switcher menu item, shortcodes, and the switcher automatically added above singular content.', 'translateplus'); ?>
-                    </p>
-                </fieldset>
                 <p><strong><?php esc_html_e('Shortcode', 'translateplus'); ?></strong></p>
                 <p><code class="translateplus-code-inline">[tp_language_switcher]</code></p>
                 <p class="description">
@@ -724,7 +725,7 @@ final class TranslatePlus_Settings {
     /**
      * Dropdown (manual vs automatic sync) + checkbox for editor manual controls.
      */
-    private static function render_translation_workflow_card(string $translation_mode, string $editor_manual_ui, string $auto_language_redirect): void {
+    private static function render_translation_workflow_card(string $translation_mode, string $editor_manual_ui, string $auto_language_redirect, string $auto_publish_translations): void {
         ?>
         <div class="translateplus-card">
             <h2 class="translateplus-card__title"><?php esc_html_e('Translation workflow', 'translateplus'); ?></h2>
@@ -757,6 +758,36 @@ final class TranslatePlus_Settings {
                     <?php esc_html_e('Automatic mode on each save: creates missing draft posts in the same translation group (matching the parent page when applicable), then translates title and content into those linked posts via the API (uses credits). Translation runs during save; a follow-up cron job can re-sync if WP-Cron runs. Only posts you can edit are created or updated.', 'translateplus'); ?>
                 </p>
                 <p style="margin-top:18px;margin-bottom:8px;">
+                    <input type="hidden" name="<?php echo esc_attr(self::OPTION_AUTO_PUBLISH_TRANSLATIONS); ?>" value="0" />
+                    <label>
+                        <input
+                            type="checkbox"
+                            name="<?php echo esc_attr(self::OPTION_AUTO_PUBLISH_TRANSLATIONS); ?>"
+                            value="1"
+                            <?php checked($auto_publish_translations, '1'); ?>
+                        />
+                        <?php esc_html_e('Auto publish translated posts', 'translateplus'); ?>
+                    </label>
+                </p>
+                <p class="description" style="margin-top:0;margin-bottom:0;">
+                    <?php esc_html_e('When enabled, newly created translations are published immediately. When disabled, new translations are saved as drafts until you publish them manually.', 'translateplus'); ?>
+                </p>
+                <p style="margin-top:18px;margin-bottom:8px;">
+                    <input type="hidden" name="<?php echo esc_attr(self::OPTION_AUTO_TRANSLATE_SLUGS); ?>" value="0" />
+                    <label>
+                        <input
+                            type="checkbox"
+                            name="<?php echo esc_attr(self::OPTION_AUTO_TRANSLATE_SLUGS); ?>"
+                            value="1"
+                            <?php checked((string) get_option(self::OPTION_AUTO_TRANSLATE_SLUGS, '1'), '1'); ?>
+                        />
+                        <?php esc_html_e('Translate slugs automatically', 'translateplus'); ?>
+                    </label>
+                </p>
+                <p class="description" style="margin-top:0;margin-bottom:0;">
+                    <?php esc_html_e('When enabled, translated pages/posts receive localized URL slugs. Turn off to keep source slugs.', 'translateplus'); ?>
+                </p>
+                <p style="margin-top:18px;margin-bottom:8px;">
                     <input type="hidden" name="<?php echo esc_attr(self::OPTION_EDITOR_MANUAL_UI); ?>" value="0" />
                     <label>
                         <input
@@ -785,6 +816,27 @@ final class TranslatePlus_Settings {
                 </p>
                 <p class="description" style="margin-top:0;margin-bottom:0;">
                     <?php esc_html_e('When enabled, visitors can be sent to the best-matching translation for their browser language (implementation uses this setting). Off by default.', 'translateplus'); ?>
+                </p>
+                <p style="margin-top:18px;margin-bottom:8px;">
+                    <label for="translateplus-url-mode">
+                        <strong><?php esc_html_e('URL structure', 'translateplus'); ?></strong>
+                    </label>
+                </p>
+                <select
+                    name="<?php echo esc_attr(self::OPTION_URL_MODE); ?>"
+                    id="translateplus-url-mode"
+                    class="regular-text"
+                    style="max-width:100%;"
+                >
+                    <option value="directory_for_translations" <?php selected(self::get_url_mode(), 'directory_for_translations'); ?>>
+                        <?php esc_html_e('Use /{lang}/ for translations, keep default language without prefix', 'translateplus'); ?>
+                    </option>
+                    <option value="directory_for_all" <?php selected(self::get_url_mode(), 'directory_for_all'); ?>>
+                        <?php esc_html_e('Use /{lang}/ for all languages, including default language', 'translateplus'); ?>
+                    </option>
+                </select>
+                <p class="description" style="margin-top:8px;margin-bottom:0;">
+                    <?php esc_html_e('Changing URL mode may require re-saving permalinks under Settings → Permalinks.', 'translateplus'); ?>
                 </p>
             </fieldset>
         </div>
@@ -854,11 +906,41 @@ final class TranslatePlus_Settings {
 
         register_setting(
             self::OPTION_GROUP,
+            self::OPTION_AUTO_PUBLISH_TRANSLATIONS,
+            array(
+                'type'              => 'string',
+                'sanitize_callback' => array(self::class, 'sanitize_auto_publish_translations'),
+                'default'           => '1',
+            )
+        );
+
+        register_setting(
+            self::OPTION_GROUP,
+            self::OPTION_AUTO_TRANSLATE_SLUGS,
+            array(
+                'type'              => 'string',
+                'sanitize_callback' => array(self::class, 'sanitize_auto_translate_slugs'),
+                'default'           => '1',
+            )
+        );
+
+        register_setting(
+            self::OPTION_GROUP,
             self::OPTION_FRONTEND_SWITCHER_DISPLAY,
             array(
                 'type'              => 'string',
                 'sanitize_callback' => array(self::class, 'sanitize_frontend_switcher_display'),
                 'default'           => 'dropdown',
+            )
+        );
+
+        register_setting(
+            self::OPTION_GROUP,
+            self::OPTION_URL_MODE,
+            array(
+                'type'              => 'string',
+                'sanitize_callback' => array(self::class, 'sanitize_url_mode'),
+                'default'           => 'directory_for_translations',
             )
         );
 
@@ -895,6 +977,20 @@ final class TranslatePlus_Settings {
     }
 
     /**
+     * Whether newly created translations should be published immediately.
+     */
+    public static function is_auto_publish_translations_enabled(): bool {
+        return (string) get_option(self::OPTION_AUTO_PUBLISH_TRANSLATIONS, '1') === '1';
+    }
+
+    /**
+     * Whether translated post/page slugs should be localized.
+     */
+    public static function is_auto_translate_slugs_enabled(): bool {
+        return (string) get_option(self::OPTION_AUTO_TRANSLATE_SLUGS, '1') === '1';
+    }
+
+    /**
      * Front-end language switcher layout: dropdown (button + panel) or inline links.
      *
      * @return string "dropdown"|"inline"
@@ -920,11 +1016,59 @@ final class TranslatePlus_Settings {
     }
 
     /**
+     * @return string "directory_for_translations"|"directory_for_all"
+     */
+    public static function get_url_mode(): string {
+        $v = (string) get_option(self::OPTION_URL_MODE, 'directory_for_translations');
+
+        return in_array($v, array('directory_for_translations', 'directory_for_all'), true)
+            ? $v
+            : 'directory_for_translations';
+    }
+
+    /**
+     * Whether default language URL should be prefixed.
+     */
+    public static function is_default_language_prefixed(): bool {
+        return self::get_url_mode() === 'directory_for_all';
+    }
+
+    /**
      * @param mixed $value Submitted value (hidden "0" or checkbox "1").
      */
     public static function sanitize_auto_language_redirect($value): string {
         if ($value === null) {
             return (string) get_option(self::OPTION_AUTO_LANGUAGE_REDIRECT, '0');
+        }
+
+        if ($value === '1' || $value === 1 || $value === true) {
+            return '1';
+        }
+
+        return '0';
+    }
+
+    /**
+     * @param mixed $value Submitted value (hidden "0" or checkbox "1").
+     */
+    public static function sanitize_auto_publish_translations($value): string {
+        if ($value === null) {
+            return (string) get_option(self::OPTION_AUTO_PUBLISH_TRANSLATIONS, '1');
+        }
+
+        if ($value === '1' || $value === 1 || $value === true) {
+            return '1';
+        }
+
+        return '0';
+    }
+
+    /**
+     * @param mixed $value Submitted value (hidden "0" or checkbox "1").
+     */
+    public static function sanitize_auto_translate_slugs($value): string {
+        if ($value === null) {
+            return (string) get_option(self::OPTION_AUTO_TRANSLATE_SLUGS, '1');
         }
 
         if ($value === '1' || $value === 1 || $value === true) {
@@ -962,6 +1106,21 @@ final class TranslatePlus_Settings {
         }
 
         return '0';
+    }
+
+    /**
+     * @param mixed $value Submitted URL mode.
+     */
+    public static function sanitize_url_mode($value): string {
+        if ($value === null) {
+            return self::get_url_mode();
+        }
+
+        $v = is_string($value) ? $value : '';
+
+        return in_array($v, array('directory_for_translations', 'directory_for_all'), true)
+            ? $v
+            : self::get_url_mode();
     }
 
     /**
@@ -1817,6 +1976,7 @@ final class TranslatePlus_Settings {
         $translation_mode       = (string) get_option(self::OPTION_TRANSLATION_MODE, 'manual');
         $editor_manual_ui       = (string) get_option(self::OPTION_EDITOR_MANUAL_UI, '1');
         $auto_language_redirect = (string) get_option(self::OPTION_AUTO_LANGUAGE_REDIRECT, '0');
+        $auto_publish_translations = (string) get_option(self::OPTION_AUTO_PUBLISH_TRANSLATIONS, '1');
         ?>
         <div class="wrap translateplus-settings">
             <?php self::render_settings_page_header(); ?>
@@ -1945,7 +2105,7 @@ final class TranslatePlus_Settings {
                                 hidden
                             >
                                 <div class="translateplus-settings__main translateplus-settings__main--tab-only">
-                                    <?php self::render_translation_workflow_card($translation_mode, $editor_manual_ui, $auto_language_redirect); ?>
+                                    <?php self::render_translation_workflow_card($translation_mode, $editor_manual_ui, $auto_language_redirect, $auto_publish_translations); ?>
                                 </div>
                             </div>
 
@@ -2064,7 +2224,7 @@ final class TranslatePlus_Settings {
                                 hidden
                             >
                                 <div class="translateplus-settings__main translateplus-settings__main--tab-only">
-                                    <?php self::render_translation_workflow_card($translation_mode, $editor_manual_ui, $auto_language_redirect); ?>
+                                    <?php self::render_translation_workflow_card($translation_mode, $editor_manual_ui, $auto_language_redirect, $auto_publish_translations); ?>
                                 </div>
                             </div>
 

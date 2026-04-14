@@ -42,7 +42,9 @@ final class TranslatePlus_Translation_Group {
      * Public singular views: language links above post content (same translation group).
      */
     public static function register_frontend_hooks(): void {
-        add_filter('the_content', array(self::class, 'prepend_frontend_language_switcher'), 8);
+        if ((bool) apply_filters('translateplus_auto_prepend_content_switcher', false)) {
+            add_filter('the_content', array(self::class, 'prepend_frontend_language_switcher'), 8);
+        }
         add_filter('wp_nav_menu_items', array(self::class, 'append_nav_menu_language_items'), 20, 2);
     }
 
@@ -458,7 +460,33 @@ final class TranslatePlus_Translation_Group {
             );
         }
 
+        if (! is_singular() && (is_front_page() || is_home())) {
+            $current_lang = self::detect_current_request_language();
+            foreach ($items as &$item) {
+                $code = self::switcher_language_key((string) $item['code']);
+                $item['url'] = TranslatePlus_URL_Builder::convert_url(home_url('/'), $code);
+                $item['missing'] = false;
+                $item['current'] = ($code === $current_lang);
+            }
+            unset($item);
+        }
+
         return $items;
+    }
+
+    /**
+     * Detect current request language from rewrite var, falling back to default source language.
+     */
+    private static function detect_current_request_language(): string {
+        $q = get_query_var(TranslatePlus_Rewrites::QUERY_VAR_LANG, '');
+        if (is_string($q) && $q !== '') {
+            $n = TranslatePlus_Languages::normalize($q);
+            if ($n !== null && $n !== 'auto') {
+                return $n;
+            }
+        }
+
+        return TranslatePlus_API::DEFAULT_SOURCE;
     }
 
     /**

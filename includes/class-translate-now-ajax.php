@@ -39,6 +39,13 @@ final class TranslatePlus_Translate_Now_Ajax {
         '_customize_changeset_uuid',
     );
 
+    /**
+     * Term-level translation grouping (lightweight, API-focused).
+     */
+    private const TERM_META_GROUP = '_tp_term_translation_group';
+
+    private const TERM_META_LANGUAGE = '_tp_term_language';
+
     public static function init(): void {
         add_action('wp_ajax_' . self::ACTION, array(self::class, 'handle_ajax'));
         add_action('wp_ajax_' . self::ACTION_TP_TRANSLATE_POST, array(self::class, 'handle_tp_translate_post'));
@@ -202,8 +209,9 @@ final class TranslatePlus_Translate_Now_Ajax {
         if ($content_mode === 'copy') {
             $title_t   = is_string($post->post_title) ? $post->post_title : '';
             $html      = $post->post_content;
-            $body_use  = ! is_string($html) ? '' : wp_kses_post($html);
+            $body_use  = ! is_string($html) ? '' : $html;
             $excerpt_t = is_string($post->post_excerpt) ? $post->post_excerpt : '';
+            $slug_t    = self::build_translated_slug($post, $target, $source_lang, $title_t);
         } else {
             $html = $post->post_content;
             if (! is_string($html)) {
@@ -223,15 +231,16 @@ final class TranslatePlus_Translate_Now_Ajax {
             $excerpt_t = $excerpt !== ''
                 ? self::translate_plain_text($excerpt, $target, $source_lang)
                 : '';
-            $body_use = wp_kses_post($translated_body);
+            $body_use = (string) $translated_body;
+            $slug_t = self::build_translated_slug($post, $target, $source_lang, $title_t);
         }
 
         $new_id = wp_insert_post(
             array(
                 'post_type'    => $post->post_type,
-                'post_status'  => 'draft',
+                'post_status'  => self::target_status_for_new_translation($post),
                 'post_title'   => $title_t,
-                'post_name'    => sanitize_title(is_string($title_t) ? $title_t : ''),
+                'post_name'    => $slug_t,
                 'post_content' => $body_use,
                 'post_excerpt' => $excerpt_t,
                 'post_author'  => get_current_user_id(),
@@ -248,7 +257,14 @@ final class TranslatePlus_Translate_Now_Ajax {
             );
         }
 
-        self::copy_taxonomies($post_id, (int) $new_id, $post->post_type);
+        self::copy_taxonomies(
+            $post_id,
+            (int) $new_id,
+            $post->post_type,
+            $target,
+            $source_lang,
+            $content_mode === 'translate'
+        );
         self::copy_post_meta_skipping((int) $post_id, (int) $new_id);
 
         update_post_meta((int) $new_id, TranslatePlus_Translation_Group::META_GROUP, $group_id);
@@ -273,6 +289,21 @@ final class TranslatePlus_Translate_Now_Ajax {
     }
 
     /**
+     * Auto-publish translated post when source is publish/private/future.
+     */
+    private static function target_status_for_new_translation(WP_Post $source): string {
+        if (! TranslatePlus_Settings::is_auto_publish_translations_enabled()) {
+            return 'draft';
+        }
+
+        if ($source->post_status === 'publish' || $source->post_status === 'private' || $source->post_status === 'future') {
+            return $source->post_status;
+        }
+
+        return 'publish';
+    }
+
+    /**
      * Translate plain text via POST /v2/translate (title, excerpt, slug source).
      */
     private static function translate_plain_text(string $text, string $target, string $source): string {
@@ -292,6 +323,40 @@ final class TranslatePlus_Translate_Now_Ajax {
     }
 
     /**
+     * Build a localized, unique slug for the translated post.
+     */
+    private static function build_translated_slug(WP_Post $source_post, string $target, string $source, string $fallback_title): string {
+        $source_slug = (string) $source_post->post_name;
+        if ($source_slug === '') {
+            $source_slug = sanitize_title((string) $source_post->post_title);
+        }
+
+        if (! TranslatePlus_Settings::is_auto_translate_slugs_enabled()) {
+            $slug_base = sanitize_title($source_slug);
+        } else {
+            $translated_slug_text = self::translate_plain_text($source_slug, $target, $source);
+            $slug_base = sanitize_title($translated_slug_text);
+        }
+        if ($slug_base === '') {
+            $slug_base = sanitize_title($fallback_title);
+        }
+        if ($slug_base === '') {
+            $slug_base = sanitize_title($source_slug);
+        }
+        if ($slug_base === '') {
+            $slug_base = 'translation';
+        }
+
+        return wp_unique_post_slug(
+            $slug_base,
+            0,
+            self::target_status_for_new_translation($source_post),
+            $source_post->post_type,
+            (int) $source_post->post_parent
+        );
+    }
+
+    /**
      * @param int    $from_id Source post ID.
      * @param int    $to_id   New post ID.
      * @param string $post_type Post type.
@@ -304,11 +369,18 @@ final class TranslatePlus_Translate_Now_Ajax {
      * @param string $post_type Post type slug.
      */
     public static function copy_assets_for_new_translation(int $from_id, int $to_id, string $post_type): void {
-        self::copy_taxonomies($from_id, $to_id, $post_type);
+        self::copy_taxonomies($from_id, $to_id, $post_type, '', '', false);
         self::copy_post_meta_skipping($from_id, $to_id);
     }
 
-    private static function copy_taxonomies(int $from_id, int $to_id, string $post_type): void {
+    private static function copy_taxonomies(
+        int $from_id,
+        int $to_id,
+        string $post_type,
+        string $target_lang = '',
+        string $source_lang = '',
+        bool $translate_terms = false
+    ): void {
         $taxonomies = get_object_taxonomies($post_type, 'names');
         foreach ($taxonomies as $tax) {
             if (! is_string($tax) || $tax === '') {
@@ -318,8 +390,134 @@ final class TranslatePlus_Translate_Now_Ajax {
             if (is_wp_error($terms) || $terms === array()) {
                 continue;
             }
-            wp_set_object_terms($to_id, array_map('intval', $terms), $tax);
+            $to_terms = array_map('intval', $terms);
+            if ($translate_terms && $target_lang !== '') {
+                $translated_term_ids = array();
+                foreach ($to_terms as $term_id) {
+                    $translated_id = self::ensure_translated_term($term_id, $tax, $target_lang, $source_lang);
+                    if ($translated_id > 0) {
+                        $translated_term_ids[] = $translated_id;
+                    }
+                }
+                if ($translated_term_ids !== array()) {
+                    $to_terms = array_values(array_unique($translated_term_ids));
+                }
+            }
+            wp_set_object_terms($to_id, $to_terms, $tax);
         }
+    }
+
+    private static function ensure_translated_term(int $source_term_id, string $taxonomy, string $target_lang, string $source_lang): int {
+        $source_term = get_term($source_term_id, $taxonomy);
+        if (! $source_term instanceof WP_Term) {
+            return 0;
+        }
+
+        $target_norm = TranslatePlus_Languages::normalize($target_lang);
+        if ($target_norm === null || $target_norm === 'auto') {
+            return (int) $source_term->term_id;
+        }
+
+        $source_norm = TranslatePlus_Languages::normalize($source_lang);
+        if ($source_norm === null || $source_norm === 'auto') {
+            $source_norm = TranslatePlus_API::DEFAULT_SOURCE;
+        }
+
+        $group = self::ensure_term_group((int) $source_term->term_id);
+        $existing = self::find_term_in_group_by_language($group, $taxonomy, $target_norm);
+        if ($existing > 0) {
+            return $existing;
+        }
+
+        $name = self::translate_plain_text((string) $source_term->name, $target_norm, $source_norm);
+        $description = self::translate_plain_text((string) $source_term->description, $target_norm, $source_norm);
+
+        $parent = 0;
+        if (! empty($source_term->parent)) {
+            $parent = self::ensure_translated_term((int) $source_term->parent, $taxonomy, $target_norm, $source_norm);
+        }
+
+        $slug = sanitize_title($name !== '' ? $name : (string) $source_term->slug);
+        if ($slug === '') {
+            $slug = sanitize_title((string) $source_term->slug);
+        }
+
+        $insert = wp_insert_term(
+            $name !== '' ? $name : (string) $source_term->name,
+            $taxonomy,
+            array(
+                'description' => $description,
+                'slug'        => $slug,
+                'parent'      => $parent > 0 ? $parent : 0,
+            )
+        );
+
+        if (is_wp_error($insert)) {
+            $insert = wp_insert_term(
+                $name !== '' ? $name : (string) $source_term->name,
+                $taxonomy,
+                array(
+                    'description' => $description,
+                    'slug'        => sanitize_title($slug . '-' . $target_norm),
+                    'parent'      => $parent > 0 ? $parent : 0,
+                )
+            );
+            if (is_wp_error($insert)) {
+                return 0;
+            }
+        }
+
+        $new_term_id = isset($insert['term_id']) ? (int) $insert['term_id'] : 0;
+        if ($new_term_id <= 0) {
+            return 0;
+        }
+
+        update_term_meta($new_term_id, self::TERM_META_GROUP, $group);
+        update_term_meta($new_term_id, self::TERM_META_LANGUAGE, $target_norm);
+
+        return $new_term_id;
+    }
+
+    private static function ensure_term_group(int $term_id): string {
+        $group = get_term_meta($term_id, self::TERM_META_GROUP, true);
+        if (is_string($group) && $group !== '') {
+            return $group;
+        }
+
+        $group = function_exists('wp_generate_uuid4')
+            ? wp_generate_uuid4()
+            : wp_hash(uniqid((string) $term_id, true) . (string) wp_rand());
+        update_term_meta($term_id, self::TERM_META_GROUP, $group);
+
+        return $group;
+    }
+
+    private static function find_term_in_group_by_language(string $group, string $taxonomy, string $language): int {
+        $terms = get_terms(
+            array(
+                'taxonomy'   => $taxonomy,
+                'hide_empty' => false,
+                'number'     => 1,
+                'fields'     => 'ids',
+                'meta_query' => array(
+                    'relation' => 'AND',
+                    array(
+                        'key'   => self::TERM_META_GROUP,
+                        'value' => $group,
+                    ),
+                    array(
+                        'key'   => self::TERM_META_LANGUAGE,
+                        'value' => $language,
+                    ),
+                ),
+            )
+        );
+
+        if (is_wp_error($terms) || empty($terms[0])) {
+            return 0;
+        }
+
+        return (int) $terms[0];
     }
 
     /**

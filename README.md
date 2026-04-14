@@ -155,10 +155,18 @@ Get started with **free credits** to test translations instantly.
 
 ## Architecture
 
-* Each language = separate post
-* Linked via translation group
-* Language stored in metadata
-* Clean WordPress-native approach
+TranslatePlus now uses a modular kernel inspired by large-scale multilingual plugins:
+
+* Single bootstrap entrypoint (`translateplus.php`) with lifecycle hooks
+* Lightweight service container for shared plugin context
+* Module loader that registers and boots feature modules
+* Frontend module (rewrites, switcher, browser language redirect)
+* Translation module (auto-sync and translation orchestration)
+* Admin module (settings, editor tools, AJAX handlers)
+* Translation data model remains WordPress-native:
+  * Each language = separate post
+  * Posts linked by translation group metadata
+  * Language stored in post meta
 
 ---
 
